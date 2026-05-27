@@ -106,6 +106,7 @@ export class FarcasterProvider
 
     for (const channel of channels) {
       const data = await client.publishCast({
+        // @ts-ignore - Neynar SDK types are incomplete for URL embeds
         embeds:
           firstPost?.media?.map((media) => ({
             url: media.path,
@@ -148,6 +149,7 @@ export class FarcasterProvider
 
     for (const parentHash of parentIds) {
       const data = await client.publishCast({
+        // @ts-ignore - Neynar SDK types are incomplete for URL embeds
         embeds:
           commentPost?.media?.map((media) => ({
             url: media.path,
