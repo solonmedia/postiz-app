@@ -93,6 +93,11 @@ export const getUppyUploadPlugin = (
         },
       };
     case 'local':
+    case 's3':
+      // For S3-compatible providers we currently use server-mediated upload
+      // (via the active IUploadProvider). This is simple, reliable, and works
+      // for MinIO, Megaupload-compatible endpoints, AWS S3, etc.
+      // Direct browser multipart can be added later for very large files.
       return {
         plugin: XHRUpload,
         options: {
