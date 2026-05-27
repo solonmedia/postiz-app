@@ -112,6 +112,50 @@
 
 To have the project up and running, please follow the [Quick Start Guide](https://docs.postiz.com/quickstart)
 
+## S3-compatible Storage (AWS S3, MinIO, Mega S4, etc.)
+
+Postiz supports storing media files in any S3-compatible object storage.
+
+### Basic Configuration
+
+```env
+STORAGE_PROVIDER=s3
+S3_ACCESS_KEY=your-access-key
+S3_SECRET_ACCESS_KEY=your-secret-key
+S3_BUCKET_NAME=postiz-media
+S3_BUCKET_URL=https://your-bucket.example.com
+```
+
+### Recommended Settings by Provider
+
+| Provider          | `S3_ENDPOINT`          | `S3_FORCE_PATH_STYLE` | `S3_SKIP_ACL` | Notes |
+|-------------------|------------------------|-----------------------|---------------|-------|
+| **AWS S3**        | *(leave empty)*        | `false` (or omit)     | `false`       | Use CloudFront for best performance |
+| **MinIO**         | `https://minio.example.com` | `true`            | `true`        | Most common self-hosted option |
+| **Mega S4**       | Mega's S4 endpoint     | `true`                | `true`        | Check your Mega S4 dashboard for the exact endpoint |
+| **Backblaze B2**  | `https://s3.us-west-004.backblazeb2.com` | `true`     | `true`        | Use the S3-compatible endpoint |
+| **Other**         | Provider-specific      | Usually `true`        | Usually `true`| Test with your provider |
+
+### Important Notes
+
+- `S3_BUCKET_URL` must be the **publicly accessible** base URL for your files.
+- For MinIO and most self-hosted solutions, you almost always need:
+  ```env
+  S3_FORCE_PATH_STYLE=true
+  S3_SKIP_ACL=true
+  ```
+- You can upload files directly to the bucket from other applications/tools. Use the **"Import from Storage"** button in Postiz's Media Library to bring those files into Postiz.
+
+### Sentry Profiling (Important for self-hosting)
+
+Profiling is enabled by default in production but **disabled by default in development** to avoid native library crashes on some Linux systems (common with older `libstdc++`).
+
+If you run into native Sentry errors in development, add this:
+
+```env
+SENTRY_ENABLE_PROFILING=false
+```
+
 ## Sponsor Postiz
 
 We now give a few options to Sponsor Postiz:

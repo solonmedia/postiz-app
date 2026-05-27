@@ -30,6 +30,25 @@ services:
       # CLOUDFLARE_BUCKET_URL: 'https://your-bucket-url.r2.cloudflarestorage.com/'
       # CLOUDFLARE_REGION: 'auto'
 
+      # === Generic S3-compatible Storage (MinIO, AWS S3, Backblaze, etc.)
+      # STORAGE_PROVIDER: 's3'
+      # S3_ENDPOINT: 'https://minio.example.com'   # omit for real AWS S3
+      # S3_REGION: 'us-east-1'
+      # S3_ACCESS_KEY: 'your-access-key'
+      # S3_SECRET_ACCESS_KEY: 'your-secret-key'
+      # S3_BUCKET_NAME: 'postiz-media'
+      # S3_BUCKET_URL: 'https://minio.example.com/postiz-media'
+      # S3_FORCE_PATH_STYLE: 'true'
+      # S3_SKIP_ACL: 'true'   # Use when bucket policy handles public access (common with MinIO)
+
+      # You can upload files directly into the bucket from other systems.
+      # Use the "Import from Storage" button in Postiz to bring them into the media library.
+
+      # Sentry Profiling (optional)
+      # Profiling can cause native crashes on older Linux systems.
+      # It is disabled by default in development.
+      #SENTRY_ENABLE_PROFILING: 'false'
+
       # === Social Media API Settings
       X_URL: ''
       X_API_KEY: ''

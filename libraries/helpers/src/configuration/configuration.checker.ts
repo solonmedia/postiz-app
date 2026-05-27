@@ -31,6 +31,7 @@ export class ConfigurationChecker {
     this.checkIsValidUrl('NEXT_PUBLIC_BACKEND_URL');
     this.checkIsValidUrl('BACKEND_INTERNAL_URL');
     this.checkNonEmpty('STORAGE_PROVIDER', 'Needed to setup storage.');
+    this.checkStorageProviderConfig();
   }
 
   checkNonEmpty(key: string, description?: string): boolean {
@@ -93,6 +94,27 @@ export class ConfigurationChecker {
 
     if (urlString.endsWith('/')) {
       this.issues.push(key + ' should not end with /');
+    }
+  }
+
+  checkStorageProviderConfig() {
+    const provider = this.get('STORAGE_PROVIDER') || 'local';
+
+    if (provider === 'cloudflare') {
+      this.checkNonEmpty('CLOUDFLARE_ACCOUNT_ID', 'Required when STORAGE_PROVIDER=cloudflare');
+      this.checkNonEmpty('CLOUDFLARE_ACCESS_KEY', 'Required when STORAGE_PROVIDER=cloudflare');
+      this.checkNonEmpty('CLOUDFLARE_SECRET_ACCESS_KEY', 'Required when STORAGE_PROVIDER=cloudflare');
+      this.checkNonEmpty('CLOUDFLARE_BUCKETNAME', 'Required when STORAGE_PROVIDER=cloudflare');
+      this.checkNonEmpty('CLOUDFLARE_BUCKET_URL', 'Required when STORAGE_PROVIDER=cloudflare');
+      this.checkNonEmpty('CLOUDFLARE_REGION', 'Required when STORAGE_PROVIDER=cloudflare');
+    }
+
+    if (provider === 's3') {
+      // S3_ENDPOINT is optional (real AWS S3 doesn't need it)
+      this.checkNonEmpty('S3_ACCESS_KEY', 'Required when STORAGE_PROVIDER=s3');
+      this.checkNonEmpty('S3_SECRET_ACCESS_KEY', 'Required when STORAGE_PROVIDER=s3');
+      this.checkNonEmpty('S3_BUCKET_NAME', 'Required when STORAGE_PROVIDER=s3');
+      this.checkNonEmpty('S3_BUCKET_URL', 'Required when STORAGE_PROVIDER=s3');
     }
   }
 

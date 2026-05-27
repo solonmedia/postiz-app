@@ -135,9 +135,35 @@ services:
     ports:
       - "8080:8080"
 
+  # === MinIO (S3-compatible) for local testing of STORAGE_PROVIDER=s3 ===
+  # You can upload files directly into this bucket and use the
+  # "Import from Storage" button in Postiz to bring them into the media library.
+  minio:
+    image: minio/minio:latest
+    container_name: postiz-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # MinIO Console (web UI)
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio-data:/data
+    networks:
+      - postiz-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
 volumes:
   redisinsight:
   postgres-volume:
+    external: false
+  minio-data:
     external: false
 
 networks:
