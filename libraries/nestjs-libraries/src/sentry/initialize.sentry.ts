@@ -1,5 +1,4 @@
 import * as Sentry from '@sentry/nestjs';
-import { nodeProfilingIntegration } from '@sentry/profiling-node';
 import { capitalize } from 'lodash';
 
 export const initializeSentry = (appName: string, allowLogs = false) => {
@@ -24,8 +23,15 @@ export const initializeSentry = (appName: string, allowLogs = false) => {
       dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
       spotlight: process.env.SENTRY_SPOTLIGHT === '1',
       integrations: [
-        // Add our Profiling integration
-        nodeProfilingIntegration(),
+        // Profiling is enabled by default in production.
+        // It is disabled by default in development to avoid native library issues
+        // (e.g. GLIBCXX version errors on older Linux systems).
+        // You can force it on/off using SENTRY_ENABLE_PROFILING=true/false
+        ...((process.env.SENTRY_ENABLE_PROFILING
+          ? process.env.SENTRY_ENABLE_PROFILING === 'true'
+          : process.env.NODE_ENV !== 'development')
+          ? [require('@sentry/profiling-node').nodeProfilingIntegration()]
+          : []),
         Sentry.consoleLoggingIntegration({ levels: ['log', 'info', 'warn', 'error', 'debug', 'assert', 'trace'] }),
         Sentry.openAIIntegration({
           recordInputs: true,
