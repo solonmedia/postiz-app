@@ -300,6 +300,45 @@ export const MediaBox: FC<{
     [toaster, t]
   );
 
+  const handleImportFromStorage = useCallback(async () => {
+    try {
+      // First scan to see how many new files exist
+      const scanRes = await fetch('/media/import-from-storage/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const scanData = await scanRes.json();
+
+      if (!scanData.newFilesCount || scanData.newFilesCount === 0) {
+        toaster.show('No new files found in storage', 'success');
+        return;
+      }
+
+      const confirmed = await deleteDialog(
+        `Found ${scanData.newFilesCount} new file(s) in storage.\n\nImport them into the media library?`,
+        'Yes, Import Files!'
+      );
+
+      if (!confirmed) return;
+
+      const importRes = await fetch('/media/import-from-storage', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const importData = await importRes.json();
+
+      toaster.show(
+        `${importData.importedCount || 0} file(s) imported from storage`,
+        'success'
+      );
+      mutate();
+    } catch {
+      toaster.show('Failed to import from storage', 'error');
+    }
+  }, [mutate, toaster]);
+
   const dragAndDrop = useCallback(
     async (event: ClipboardEvent<HTMLDivElement> | File[]) => {
       // @ts-ignore
@@ -386,12 +425,30 @@ export const MediaBox: FC<{
       ) {
         return;
       }
-      await fetch(`/media/${media.id}`, {
+
+      const res = await fetch(`/media/${media.id}`, {
         method: 'DELETE',
       });
+
+      let message = t('media_deleted', 'Media deleted');
+
+      try {
+        const data = await res.json();
+        if (data?.storage === 'removed') {
+          message = t('media_deleted_from_storage', 'Media deleted and removed from storage');
+        } else if (data?.storage === 'not_found') {
+          message = t('media_deleted_already_removed', 'Media deleted (file was already removed from storage)');
+        } else if (data?.storage === 'error') {
+          message = t('media_deleted_storage_error', 'Media deleted (failed to remove file from storage)');
+        }
+      } catch {
+        // ignore json parse errors
+      }
+
+      toaster.show(message, 'success');
       mutate();
     },
-    [mutate]
+    [mutate, toaster, t]
   );
 
   const btn = useMemo(() => {
@@ -444,6 +501,12 @@ export const MediaBox: FC<{
           <div className="flex gap-[8px]">
             {btn}
             <ThirdPartyMediaLibrary onImported={() => mutate()} />
+            <button
+              onClick={handleImportFromStorage}
+              className="cursor-pointer h-[42px] px-[14px] text-sm items-center justify-center border border-newTextColor/10 flex rounded-[8px]"
+            >
+              Import from Storage
+            </button>
           </div>
         </div>
         <div className="w-full pointer-events-none relative mt-[5px] mb-[5px]">
@@ -506,6 +569,12 @@ export const MediaBox: FC<{
                 <div className="forceChange flex gap-[8px]">
                   {btn}
                   <ThirdPartyMediaLibrary onImported={() => mutate()} />
+                  <button
+                    onClick={handleImportFromStorage}
+                    className="cursor-pointer h-[42px] px-[16px] items-center justify-center border border-newTextColor/10 flex rounded-[10px] text-sm"
+                  >
+                    Import from Storage
+                  </button>
                 </div>
               </>
             )}
@@ -589,6 +658,19 @@ export const MediaBox: FC<{
                           className="w-full h-full object-cover"
                           src={mediaDirectory.set(media.path)}
                           alt="media"
+                          onError={async () => {
+                            // Best-effort: if the thumbnail fails to load, check if the file still exists in storage.
+                            // Only clean up the DB record if storage confirms the file is gone.
+                            // This protects against transient network issues.
+                            try {
+                              await fetch(`/media/${media.id}/verify`, {
+                                method: 'POST',
+                              });
+                              mutate();
+                            } catch {
+                              // ignore
+                            }
+                          }}
                         />
                       )}
                     </div>
