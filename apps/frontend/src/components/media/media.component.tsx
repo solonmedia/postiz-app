@@ -335,7 +335,7 @@ export const MediaBox: FC<{
       );
       mutate();
     } catch {
-      toaster.show('Failed to import from storage', 'error');
+      toaster.show('Failed to import from storage', 'warning');
     }
   }, [mutate, toaster]);
 
