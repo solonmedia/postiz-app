@@ -4,11 +4,10 @@ import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
 import mime from 'mime-types';
 // @ts-ignore
 import { getExtension } from 'mime';
-import { IUploadProvider } from './upload.interface';
+import { IUploadProvider, RemoveFileResult } from './upload.interface';
 import axios from 'axios';
 import { isSafePublicHttpsUrl } from '@gitroom/nestjs-libraries/dtos/webhooks/webhook.url.validator';
 import { ssrfSafeDispatcher } from '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher';
-import { parseDataUrl } from '@gitroom/nestjs-libraries/upload/data.url';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { fromBuffer } = require('file-type');
 
@@ -78,21 +77,14 @@ class CloudflareStorage implements IUploadProvider {
   }
 
   async uploadSimple(path: string) {
-    const dataUrl = path.startsWith('data:') ? parseDataUrl(path) : null;
-
-    let body: Buffer;
-    if (dataUrl) {
-      body = dataUrl.buffer;
-    } else {
-      if (!(await isSafePublicHttpsUrl(path))) {
-        throw new Error('Unsafe URL');
-      }
-      const loadImage = await fetch(path, {
-        // @ts-ignore — undici option, not in lib.dom fetch types
-        dispatcher: ssrfSafeDispatcher,
-      });
-      body = Buffer.from(await loadImage.arrayBuffer());
+    if (!(await isSafePublicHttpsUrl(path))) {
+      throw new Error('Unsafe URL');
     }
+    const loadImage = await fetch(path, {
+      // @ts-ignore — undici option, not in lib.dom fetch types
+      dispatcher: ssrfSafeDispatcher,
+    });
+    const body = Buffer.from(await loadImage.arrayBuffer());
     const detected = await fromBuffer(body);
     if (!detected || !ALLOWED_MIME_TYPES.has(detected.mime)) {
       throw new Error('Unsupported file type.');
@@ -155,13 +147,10 @@ class CloudflareStorage implements IUploadProvider {
   }
 
   // Implement the removeFile method from IUploadProvider
-  async removeFile(filePath: string): Promise<void> {
-    // const fileName = filePath.split('/').pop(); // Extract the filename from the path
-    // const command = new DeleteObjectCommand({
-    //   Bucket: this._bucketName,
-    //   Key: fileName,
-    // });
-    // await this._client.send(command);
+  async removeFile(filePath: string): Promise<RemoveFileResult> {
+    // TODO: Implement actual deletion for Cloudflare R2
+    console.warn('[CloudflareStorage] removeFile is not fully implemented yet');
+    return 'error';
   }
 }
 
