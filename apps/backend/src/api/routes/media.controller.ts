@@ -40,6 +40,47 @@ export class MediaController {
     return this._mediaService.deleteMedia(org.id, id);
   }
 
+  /**
+   * Used by the frontend when a thumbnail fails to load.
+   * Checks if the file still exists in storage. If not, cleans up the DB record.
+   * This is best-effort and should not be triggered on transient network failures.
+   */
+  @Post('/:id/verify')
+  async verifyMedia(@GetOrgFromRequest() org: Organization, @Param('id') id: string) {
+    const stillExists = await this._mediaService.fileStillExists(org.id, id);
+
+    if (!stillExists) {
+      await this._mediaService.deleteMedia(org.id, id);
+      return { cleaned: true };
+    }
+
+    return { cleaned: false };
+  }
+
+  /**
+   * Import files that were uploaded directly to the storage bucket by external systems.
+   * This allows other applications to drop files into the bucket and have them appear in Postiz.
+   */
+  @Post('/import-from-storage')
+  async importFromStorage(
+    @GetOrgFromRequest() org: Organization,
+    @Body() body: { prefix?: string }
+  ) {
+    return this._mediaService.importFromStorage(org.id, { prefix: body?.prefix });
+  }
+
+  /**
+   * Scans storage for new files that could be imported.
+   * Returns count and preview of files that are not yet in the media library.
+   */
+  @Post('/import-from-storage/scan')
+  async scanImportFromStorage(
+    @GetOrgFromRequest() org: Organization,
+    @Body() body: { prefix?: string }
+  ) {
+    return this._mediaService.scanForImport(org.id, { prefix: body?.prefix });
+  }
+
   @Post('/generate-video')
   generateVideo(
     @GetOrgFromRequest() org: Organization,
@@ -63,7 +104,7 @@ export class MediaController {
 
     return {
       output:
-        'data:image/png;base64,' +
+        (isPicturePrompt ? '' : 'data:image/png;base64,') +
         (await this._mediaService.generateImage(prompt, org, isPicturePrompt)),
     };
   }
@@ -111,10 +152,26 @@ export class MediaController {
     if (!name) {
       return false;
     }
+
+    const provider = process.env.STORAGE_PROVIDER || 'local';
+    let baseUrl: string;
+
+    if (provider === 'cloudflare') {
+      baseUrl = process.env.CLOUDFLARE_BUCKET_URL!;
+    } else if (provider === 's3') {
+      baseUrl = process.env.S3_BUCKET_URL!;
+    } else {
+      // local — this endpoint is not normally used for local, but fall back gracefully
+      baseUrl = (process.env.FRONTEND_URL || '') + '/uploads';
+    }
+
+    // Ensure no double slash
+    const finalUrl = baseUrl.replace(/\/$/, '') + '/' + name;
+
     return this._mediaService.saveFile(
       org.id,
       name,
-      process.env.CLOUDFLARE_BUCKET_URL + '/' + name,
+      finalUrl,
       originalName || undefined
     );
   }

@@ -7,6 +7,7 @@ import { SaveMediaInformationDto } from '@gitroom/nestjs-libraries/dtos/media/sa
 import { VideoManager } from '@gitroom/nestjs-libraries/videos/video.manager';
 import { VideoDto } from '@gitroom/nestjs-libraries/dtos/videos/video.dto';
 import { UploadFactory } from '@gitroom/nestjs-libraries/upload/upload.factory';
+import { RemoveFileResult } from '@gitroom/nestjs-libraries/upload/upload.interface';
 import {
   AuthorizationActions,
   Sections,
@@ -24,8 +25,112 @@ export class MediaService {
     private _videoManager: VideoManager
   ) {}
 
-  async deleteMedia(org: string, id: string) {
-    return this._mediaRepository.deleteMedia(org, id);
+  async deleteMedia(org: string, id: string): Promise<{ storage: RemoveFileResult }> {
+    const media = await this._mediaRepository.getMediaById(id);
+
+    let storageResult: RemoveFileResult = 'not_found';
+
+    if (media && media.organizationId === org) {
+      storageResult = await this.storage.removeFile(media.path);
+    }
+
+    await this._mediaRepository.deleteMedia(org, id);
+
+    return { storage: storageResult };
+  }
+
+  /**
+   * Checks if the file still exists in storage.
+   * Returns true if we cannot confirm it is missing (conservative on transient errors).
+   */
+  async fileStillExists(org: string, id: string): Promise<boolean> {
+    const media = await this._mediaRepository.getMediaById(id);
+    if (!media || media.organizationId !== org) return false;
+
+    if (typeof this.storage.fileExists === 'function') {
+      return this.storage.fileExists(media.path);
+    }
+
+    // If the provider doesn't support existence checks, assume it still exists
+    return true;
+  }
+
+  /**
+   * Scans the storage for files that are not yet imported into the media library.
+   * Returns information about how many new files would be imported.
+   */
+  async scanForImport(orgId: string, options: { prefix?: string } = {}) {
+    if (typeof this.storage.listFiles !== 'function') {
+      throw new Error('Current storage provider does not support listing files');
+    }
+
+    const files = await this.storage.listFiles({
+      prefix: options.prefix,
+      maxKeys: 1000,
+    });
+
+    let newFilesCount = 0;
+    const newFiles: Array<{ key: string; url: string; size?: number }> = [];
+
+    for (const file of files) {
+      const existing = await this._mediaRepository.findByPath(file.url);
+      if (!existing) {
+        newFilesCount++;
+        newFiles.push({
+          key: file.key,
+          url: file.url,
+          size: file.size,
+        });
+      }
+    }
+
+    return {
+      newFilesCount,
+      newFiles: newFiles.slice(0, 50), // limit preview
+    };
+  }
+
+  /**
+   * Imports files that exist in the storage bucket but are not yet in the database.
+   * Useful for allowing external systems to drop files directly into the bucket.
+   */
+  async importFromStorage(orgId: string, options: { prefix?: string } = {}) {
+    if (typeof this.storage.listFiles !== 'function') {
+      throw new Error('Current storage provider does not support listing files');
+    }
+
+    const files = await this.storage.listFiles({
+      prefix: options.prefix,
+      maxKeys: 500,
+    });
+
+    const imported: any[] = [];
+
+    for (const file of files) {
+      // Skip if we already have this file registered
+      const existing = await this._mediaRepository.findByPath(file.url);
+      if (existing) continue;
+
+      const fileName = file.key.split('/').pop() || file.key;
+
+      // Basic type detection
+      const isVideo = /\.(mp4|mov|webm|avi)$/i.test(file.key);
+      const type = isVideo ? 'video' : 'image';
+
+      const created = await this._mediaRepository.saveFile(
+        orgId,
+        fileName,
+        file.url,
+        fileName
+      );
+
+      imported.push(created);
+    }
+
+    return {
+      importedCount: imported.length,
+      imported,
+    };
   }
 
   getMediaById(id: string) {
@@ -45,7 +150,7 @@ export class MediaService {
           prompt = await this._openAi.generatePromptForPicture(prompt);
           console.log('Prompt:', prompt);
         }
-        return this._openAi.generateImage(prompt);
+        return this._openAi.generateImage(prompt, !!generatePromptFirst);
       }
     );
 
