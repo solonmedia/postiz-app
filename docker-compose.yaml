@@ -38,6 +38,7 @@ services:
       # S3_SECRET_ACCESS_KEY: 'your-secret-key'
       # S3_BUCKET_NAME: 'postiz-media'
       # S3_BUCKET_URL: 'https://minio.example.com/postiz-media'
+      #   (For Mega S4 include the Account ID in the URL above. No separate S3_ACCOUNT_ID var.)
       # S3_FORCE_PATH_STYLE: 'true'
       # S3_SKIP_ACL: 'true'   # Use when bucket policy handles public access (common with MinIO)
 

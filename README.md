@@ -132,13 +132,14 @@ S3_BUCKET_URL=https://your-bucket.example.com
 |-------------------|------------------------|-----------------------|---------------|-------|
 | **AWS S3**        | *(leave empty)*        | `false` (or omit)     | `false`       | Use CloudFront for best performance |
 | **MinIO**         | `https://minio.example.com` | `true`            | `true`        | Most common self-hosted option |
-| **Mega S4**       | Mega's S4 endpoint     | `true`                | `true`        | Check your Mega S4 dashboard for the exact endpoint |
+| **Mega S4**       | Regional S3 endpoint (e.g. `s3.ca-vancouver.megas4.com`) | `true` | `true` | Include Account ID in `S3_BUCKET_URL` (e.g. `https://s3.g.megas4.com/<id>/your-bucket`). No separate `S3_ACCOUNT_ID`. |
 | **Backblaze B2**  | `https://s3.us-west-004.backblazeb2.com` | `true`     | `true`        | Use the S3-compatible endpoint |
 | **Other**         | Provider-specific      | Usually `true`        | Usually `true`| Test with your provider |
 
 ### Important Notes
 
 - `S3_BUCKET_URL` must be the **publicly accessible** base URL for your files.
+- For Mega S4 (and similar providers that insert an Account ID or prefix), include it directly in `S3_BUCKET_URL`. There is no separate `S3_ACCOUNT_ID` variable for the generic S3 provider.
 - For MinIO and most self-hosted solutions, you almost always need:
   ```env
   S3_FORCE_PATH_STYLE=true
