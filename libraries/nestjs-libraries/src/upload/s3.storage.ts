@@ -163,38 +163,55 @@ class S3Storage implements IUploadProvider {
 
   /**
    * Extracts the S3 object key from a stored public URL or raw path.
-   * Supports both path-style and virtual-hosted style URLs.
+   * Supports classic path-style, virtual-hosted style, and providers that insert
+   * an extra prefix (e.g. Mega S4: https://s3.g.megas4.com/<accountid>/<bucket>/<key>).
    */
   private extractKeyFromPath(filePath: string): string | null {
     if (!filePath) return null;
 
-    // Strip query params and hash fragments first
     const cleanPath = filePath.split('?')[0].split('#')[0];
 
     try {
       const url = new URL(cleanPath);
-      let key = url.pathname.replace(/^\//, '');
+      let pathname = url.pathname.replace(/^\//, '');
 
-      // Virtual-hosted style: bucket is in the hostname (e.g. bucket.s3.amazonaws.com/key)
+      // Virtual-hosted style: bucket is in the hostname (bucket.s3.../key)
       if (this._bucketName && url.hostname.startsWith(this._bucketName + '.')) {
-        return key || null;
+        return pathname || null;
       }
 
-      // Path-style: bucket is the first path segment (common with MinIO)
-      if (this._bucketName && key.startsWith(this._bucketName + '/')) {
-        key = key.substring(this._bucketName.length + 1);
+      // Find the bucket name anywhere in the path and take everything after it.
+      // This handles:
+      //   - Classic path style:           /<bucket>/<key>
+      //   - Mega S4 style:                /<accountid>/<bucket>/<key>
+      //   - Any other extra prefix style.
+      if (this._bucketName) {
+        const bucketSegment = this._bucketName + '/';
+        const idx = pathname.indexOf(bucketSegment);
+        if (idx !== -1) {
+          return pathname.substring(idx + bucketSegment.length) || null;
+        }
+        // Exact bucket match with no key (edge case)
+        if (pathname === this._bucketName) {
+          return null;
+        }
       }
 
-      return key || null;
+      // Fallback: return the path as-is (might already be a raw key)
+      return pathname || null;
     } catch {
-      // Not a valid URL — treat the input as a raw path/key
-      let key = cleanPath.replace(/^\//, '');
+      // Raw path (not a full URL)
+      let p = cleanPath.replace(/^\//, '');
 
-      if (this._bucketName && key.startsWith(this._bucketName + '/')) {
-        key = key.substring(this._bucketName.length + 1);
+      if (this._bucketName) {
+        const bucketSegment = this._bucketName + '/';
+        const idx = p.indexOf(bucketSegment);
+        if (idx !== -1) {
+          return p.substring(idx + bucketSegment.length) || null;
+        }
       }
 
-      return key || null;
+      return p || null;
     }
   }
 
