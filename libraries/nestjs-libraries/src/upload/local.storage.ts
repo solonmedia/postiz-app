@@ -1,12 +1,11 @@
-import { IUploadProvider, RemoveFileResult } from './upload.interface';
-import { mkdirSync, unlink, writeFileSync } from 'fs';
-// @ts-ignore
-import mime from 'mime';
-import { extname } from 'path';
+import { IUploadProvider, UploadedStream } from './upload.interface';
+import { createWriteStream, mkdirSync, unlink, writeFileSync } from 'fs';
+import { Readable } from 'stream';
+import { pipeline } from 'stream/promises';
 import { isSafePublicHttpsUrl } from '@gitroom/nestjs-libraries/dtos/webhooks/webhook.url.validator';
 import { ssrfSafeDispatcher } from '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { fromBuffer } = require('file-type');
+const { fileTypeFromBuffer } = require('file-type');
 
 const LOCAL_STORAGE_ALLOWED_MIME = new Set<string>([
   'image/jpeg',
@@ -25,21 +24,8 @@ const LOCAL_STORAGE_ALLOWED_MIME = new Set<string>([
 export class LocalStorage implements IUploadProvider {
   constructor(private uploadDirectory: string) {}
 
-  async uploadSimple(path: string) {
-    if (!(await isSafePublicHttpsUrl(path))) {
-      throw new Error('Unsafe URL');
-    }
-    const loadImage = await fetch(path, {
-      // @ts-ignore — undici option, not in lib.dom fetch types
-      dispatcher: ssrfSafeDispatcher,
-    });
-    const contentType =
-      loadImage?.headers?.get('content-type') ||
-      loadImage?.headers?.get('Content-Type');
-    const findExtension = mime.getExtension(contentType) ||
-      path.split('?')[0].split('#')[0].split('.').pop() ||
-      'bin';
-
+  // Files live under /YYYY/MM/DD with a random name; creates the folder
+  private newFilePath(ext: string) {
     const now = new Date();
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, '0');
@@ -54,47 +40,64 @@ export class LocalStorage implements IUploadProvider {
       .map(() => Math.round(Math.random() * 16).toString(16))
       .join('');
 
-    const filePath = `${dir}/${randomName}.${findExtension}`;
-    const publicPath = `${innerPath}/${randomName}.${findExtension}`;
+    const filename = `${randomName}.${ext}`;
+    return {
+      filename,
+      filePath: `${dir}/${filename}`,
+      path: process.env.FRONTEND_URL + '/uploads' + `${innerPath}/${filename}`,
+    };
+  }
+
+  async uploadSimple(path: string) {
+    const dataUrl = path.startsWith('data:') ? parseDataUrl(path) : null;
+
+    let body: Buffer;
+    if (dataUrl) {
+      body = dataUrl.buffer;
+    } else {
+      if (!(await isSafePublicHttpsUrl(path))) {
+        throw new Error('Unsafe URL');
+      }
+      const loadImage = await fetch(path, {
+        // @ts-ignore — undici option, not in lib.dom fetch types
+        dispatcher: ssrfSafeDispatcher,
+      });
+      body = Buffer.from(await loadImage.arrayBuffer());
+    }
+
+    // Never trust the claimed mime/extension (data URL header, remote
+    // content-type, or URL path): sniff the real type from the bytes and
+    // only accept the allow-list, otherwise an attacker could write an
+    // arbitrary file (e.g. .html/.svg with embedded script) into the
+    // publicly served uploads directory on the app's own origin.
+    const detected = await fileTypeFromBuffer(body);
+    if (!detected || !LOCAL_STORAGE_ALLOWED_MIME.has(detected.mime)) {
+      throw new Error('Unsupported file type.');
+    }
+
+    const { filePath, path: publicUrl } = this.newFilePath(detected.ext);
     // Logic to save the file to the filesystem goes here
     writeFileSync(filePath, Buffer.from(await loadImage.arrayBuffer()));
 
-    return process.env.FRONTEND_URL + '/uploads' + publicPath;
+    return publicUrl;
   }
 
   async uploadFile(file: Express.Multer.File): Promise<any> {
     try {
-      const detected = await fromBuffer(file.buffer);
+      const detected = await fileTypeFromBuffer(file.buffer);
       if (!detected || !LOCAL_STORAGE_ALLOWED_MIME.has(detected.mime)) {
         throw new Error('Unsupported file type.');
       }
-      const safeExt = `.${detected.ext}`;
       const safeMime = detected.mime;
 
-      const now = new Date();
-      const year = now.getFullYear();
-      const month = String(now.getMonth() + 1).padStart(2, '0');
-      const day = String(now.getDate()).padStart(2, '0');
-
-      const innerPath = `/${year}/${month}/${day}`;
-      const dir = `${this.uploadDirectory}${innerPath}`;
-      mkdirSync(dir, { recursive: true });
-
-      const randomName = Array(32)
-        .fill(null)
-        .map(() => Math.round(Math.random() * 16).toString(16))
-        .join('');
-
-      const filePath = `${dir}/${randomName}${safeExt}`;
-      const publicPath = `${innerPath}/${randomName}${safeExt}`;
-
+      const { filename, filePath, path } = this.newFilePath(detected.ext);
       writeFileSync(filePath, file.buffer);
 
       return {
-        filename: `${randomName}${safeExt}`,
-        path: process.env.FRONTEND_URL + '/uploads' + publicPath,
+        filename,
+        path,
         mimetype: safeMime,
-        originalname: `${randomName}${safeExt}`,
+        originalname: filename,
       };
     } catch (err) {
       console.error('Error uploading file to Local Storage:', err);
@@ -102,9 +105,46 @@ export class LocalStorage implements IUploadProvider {
     }
   }
 
-  async removeFile(filePath: string): Promise<RemoveFileResult> {
-    return new Promise((resolve) => {
-      unlink(filePath, (err: any) => {
+  async uploadStream(
+    stream: Readable,
+    mimetype: string,
+    ext: string
+  ): Promise<UploadedStream> {
+    try {
+      if (!LOCAL_STORAGE_ALLOWED_MIME.has(mimetype)) {
+        throw new Error('Unsupported file type.');
+      }
+
+      const { filename, filePath, path } = this.newFilePath(ext);
+      try {
+        await pipeline(stream, createWriteStream(filePath));
+      } catch (err) {
+        // Don't leave a truncated file behind (size cap hit, remote closed, ...)
+        await this.removeFile(filePath).catch(() => {});
+        throw err;
+      }
+
+      return {
+        filename,
+        path,
+        mimetype,
+        originalname: filename,
+      };
+    } catch (err) {
+      console.error('Error streaming file to Local Storage:', err);
+      throw err;
+    }
+  }
+
+  // Accepts either the public URL or the filesystem path
+  async removeFile(filePath: string): Promise<void> {
+    const publicPrefix = process.env.FRONTEND_URL + '/uploads';
+    const localPath = filePath.startsWith(publicPrefix)
+      ? this.uploadDirectory + filePath.slice(publicPrefix.length)
+      : filePath;
+    // Logic to remove the file from the filesystem goes here
+    return new Promise((resolve, reject) => {
+      unlink(localPath, (err) => {
         if (err) {
           if (err.code === 'ENOENT') {
             resolve('not_found');

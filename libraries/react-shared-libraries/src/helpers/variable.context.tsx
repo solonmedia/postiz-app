@@ -4,6 +4,7 @@ import { createContext, FC, ReactNode, useContext, useEffect } from 'react';
 interface VariableContextInterface {
   stripeClient: string;
   billingEnabled: boolean;
+  isChatBase: boolean;
   isGeneral: boolean;
   genericOauth: boolean;
   oauthLogoUrl: string;
@@ -21,22 +22,26 @@ interface VariableContextInterface {
   facebookPixel: string;
   telegramBotName: string;
   neynarClientId: string;
+  appleClientId: string;
   isSecured: boolean;
   disableImageCompression: boolean;
   disableXAnalytics: boolean;
   language: string;
   dub: boolean;
   transloadit: string[];
+  mediaProcessing: boolean;
   sentryDsn: string;
   extensionId: string;
   googleAdsId?: string;
   googleAdsTrialTracking?: string;
+  recaptchaSiteKey?: string;
 }
 const VariableContext = createContext({
   stripeClient: '',
   billingEnabled: false,
   isGeneral: true,
   genericOauth: false,
+  isChatBase: false,
   oauthLogoUrl: '',
   googleAdsId: '',
   googleAdsTrialTracking: '',
@@ -54,13 +59,16 @@ const VariableContext = createContext({
   telegramBotName: '',
   facebookPixel: '',
   neynarClientId: '',
+  appleClientId: '',
   disableImageCompression: false,
   disableXAnalytics: false,
   language: '',
   dub: false,
   transloadit: [],
+  mediaProcessing: false,
   sentryDsn: '',
   extensionId: '',
+  recaptchaSiteKey: '',
 } as VariableContextInterface);
 export const VariableContextComponent: FC<
   VariableContextInterface & {
