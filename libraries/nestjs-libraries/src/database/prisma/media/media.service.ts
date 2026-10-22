@@ -212,18 +212,18 @@ export class MediaService {
     org: Organization,
     generatePromptFirst?: boolean
   ) {
-    const generating = await this._subscriptionService.useCredit(
-      org,
-      'ai_images',
-      async () => {
-        if (generatePromptFirst) {
-          prompt = await this._openAi.generatePromptForPicture(prompt);
-          console.log('Prompt:', prompt);
+    try {
+      const generating = await this._subscriptionService.useCredit(
+        org,
+        'ai_images',
+        async () => {
+          if (generatePromptFirst) {
+            prompt = await this._openAi.generatePromptForPicture(prompt);
+            console.log('Prompt:', prompt);
+          }
+          return this._openAi.generateImage(prompt, !!generatePromptFirst);
         }
-        return this._openAi.generateImage(prompt, !!generatePromptFirst);
-      }
-    );
-
+      );
       return generating;
     } catch (err) {
       throw generationError(err);
