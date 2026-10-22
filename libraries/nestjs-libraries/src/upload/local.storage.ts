@@ -1,9 +1,10 @@
-import { IUploadProvider, UploadedStream } from './upload.interface';
+import { IUploadProvider, UploadedStream, RemoveFileResult } from './upload.interface';
 import { createWriteStream, mkdirSync, unlink, writeFileSync } from 'fs';
 import { Readable } from 'stream';
 import { pipeline } from 'stream/promises';
 import { isSafePublicHttpsUrl } from '@gitroom/nestjs-libraries/dtos/webhooks/webhook.url.validator';
 import { ssrfSafeDispatcher } from '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher';
+import { parseDataUrl } from './data.url';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { fileTypeFromBuffer } = require('file-type');
 
@@ -77,7 +78,10 @@ export class LocalStorage implements IUploadProvider {
 
     const { filePath, path: publicUrl } = this.newFilePath(detected.ext);
     // Logic to save the file to the filesystem goes here
-    writeFileSync(filePath, Buffer.from(await loadImage.arrayBuffer()));
+    //writeFileSync(filePath, Buffer.from(await loadImage.arrayBuffer() as ArrayBuffer));
+
+  const ab = body.buffer;
+  writeFileSync(filePath, new Uint8Array(ab as ArrayBuffer));
 
     return publicUrl;
   }
@@ -91,7 +95,7 @@ export class LocalStorage implements IUploadProvider {
       const safeMime = detected.mime;
 
       const { filename, filePath, path } = this.newFilePath(detected.ext);
-      writeFileSync(filePath, file.buffer);
+      writeFileSync(filePath, new Uint8Array(file.buffer));
 
       return {
         filename,
@@ -137,7 +141,7 @@ export class LocalStorage implements IUploadProvider {
   }
 
   // Accepts either the public URL or the filesystem path
-  async removeFile(filePath: string): Promise<void> {
+  async removeFile(filePath: string): Promise<RemoveFileResult> {
     const publicPrefix = process.env.FRONTEND_URL + '/uploads';
     const localPath = filePath.startsWith(publicPrefix)
       ? this.uploadDirectory + filePath.slice(publicPrefix.length)

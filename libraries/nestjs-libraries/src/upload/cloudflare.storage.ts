@@ -12,10 +12,11 @@ import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
 import mime from 'mime-types';
 // @ts-ignore
 import { getExtension } from 'mime';
-import { IUploadProvider, UploadedStream } from './upload.interface';
+import { IUploadProvider, UploadedStream, RemoveFileResult } from './upload.interface';
 import axios from 'axios';
 import { isSafePublicHttpsUrl } from '@gitroom/nestjs-libraries/dtos/webhooks/webhook.url.validator';
 import { ssrfSafeDispatcher } from '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher';
+import { parseDataUrl } from './data.url';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { fileTypeFromBuffer } = require('file-type');
 
@@ -243,10 +244,10 @@ class CloudflareStorage implements IUploadProvider {
   }
 
   // Accepts either the public URL or the bare key
-  async removeFile(filePath: string): Promise<void> {
+  async removeFile(filePath: string): Promise<RemoveFileResult> {
     const fileName = filePath.split('/').pop();
     if (!fileName) {
-      return;
+      return 'not_found';
     }
 
     await this._client.send(
