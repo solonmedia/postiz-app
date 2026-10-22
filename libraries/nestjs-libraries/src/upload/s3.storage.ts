@@ -4,9 +4,11 @@ import { makeId } from '@gitroom/nestjs-libraries/services/make.is';
 import mime from 'mime-types';
 // @ts-ignore
 import { getExtension } from 'mime';
-import { IUploadProvider, RemoveFileResult, StorageFile } from './upload.interface';
+import { IUploadProvider, RemoveFileResult, StorageFile, UploadedStream } from './upload.interface';
 import { isSafePublicHttpsUrl } from '@gitroom/nestjs-libraries/dtos/webhooks/webhook.url.validator';
 import { ssrfSafeDispatcher } from '@gitroom/nestjs-libraries/dtos/webhooks/ssrf.safe.dispatcher';
+import { Readable } from 'stream';
+import { Upload } from '@aws-sdk/lib-storage';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { fromBuffer } = require('file-type');
 
@@ -157,6 +159,44 @@ class S3Storage implements IUploadProvider {
       };
     } catch (err) {
       console.error('Error uploading file to S3-compatible storage:', err);
+      throw err;
+    }
+  }
+
+  async uploadStream(
+    stream: Readable,
+    mimetype: string,
+    ext: string
+  ): Promise<UploadedStream> {
+    try {
+      if (!ALLOWED_MIME_TYPES.has(mimetype)) {
+        throw new Error('Unsupported file type.');
+      }
+      const id = makeId(10);
+      const key = `${id}.${ext}`;
+
+      // Multipart upload holds only a few parts in memory at a time instead
+      // of the whole body, and does not need to know the length up front
+      const upload = new Upload({
+        client: this._client,
+        params: {
+          Bucket: this._bucketName,
+          ACL: 'public-read',
+          Key: key,
+          Body: stream,
+          ContentType: mimetype,
+        },
+      });
+      await upload.done();
+
+      return {
+        filename: key,
+        mimetype,
+        originalname: key,
+        path: `${this._uploadUrl}/${key}`,
+      };
+    } catch (err) {
+      console.error('Error streaming file to S3:', err);
       throw err;
     }
   }
